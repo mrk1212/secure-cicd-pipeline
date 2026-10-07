@@ -1,0 +1,63 @@
+name: DevSecOps Security Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: 1. Build & Unit Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  dependency-scan:
+    name: 2. Dependency Scan (SCA)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm audit --audit-level=high
+
+  sast-scan:
+    name: 3. Static Code Analysis (SAST)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    container:
+      image: semgrep/semgrep
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config p/security-audit --error
+
+  deploy:
+    name: 4. Production Deployment Gate
+    needs: [dependency-scan, sast-scan]
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "Security gates passed. Deploying lab release."
